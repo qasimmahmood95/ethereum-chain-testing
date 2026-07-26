@@ -23,8 +23,13 @@ transactions — is where the hard QA lives.
   import, enforced by lint) fed chain observations; deposits _seen_ at
   1 confirmation, _credited_ at exactly depth N (S1–S3), amounts exact
   `bigint` wei past 2^53.
-- **Next, M3**: deterministic reorgs via snapshot/revert — the
-  headline un-credit test.
+- **M3 landed**: deterministic reorgs via snapshot/revert (S4–S7) —
+  the headline test: a deposit below depth N **un-credits** when its
+  inclusion block leaves the canonical chain; a reorg deeper than N
+  that invalidates a credited deposit raises an explicit alarm, never
+  silence.
+- **Next, M4**: nonce management and broadcast idempotency — a retry
+  after timeout can never double-spend.
 - Roadmap: [docs/PLAN.md](docs/PLAN.md) · Scenario ↔ invariant ↔
   custody-risk table: [docs/SCENARIOS.md](docs/SCENARIOS.md)
 
