@@ -209,6 +209,31 @@ describe('reorgTo (pure)', () => {
     expect(depositsInState(next, 'seen')[0]?.inclusionHeight).toBe(2n);
   });
 
+  it('keeps a deposit exactly at the ancestor height — including its credit', () => {
+    // depth 2: deposit at height 3 credits at height 4. Ancestor = 3,
+    // so the deposit's inclusion block stays canonical.
+    const credited = build(2, 4n, 3n);
+    const creditedReorg = reorgTo(credited, [attach(4n), block(5n, [], 'b')]);
+    expect(creditedReorg.events).toEqual([]);
+    expect(depositsInState(creditedReorg.state, 'credited')).toHaveLength(1);
+    expect(
+      depositsInState(creditedReorg.state, 'credited')[0]?.inclusionHeight,
+    ).toBe(3n);
+
+    // Same shape while still merely seen (depth 10): survives as seen.
+    const seen = build(10, 4n, 3n);
+    const seenReorg = reorgTo(seen, [attach(4n), block(5n, [], 'b')]);
+    expect(seenReorg.events).toEqual([]);
+    expect(depositsInState(seenReorg.state, 'seen')).toHaveLength(1);
+  });
+
+  it('refuses a replacement that does not diverge (ancestor chosen too deep)', () => {
+    const state = build(2, 3n);
+    expect(() => reorgTo(state, [block(2n), block(3n), block(4n)])).toThrow(
+      /does not diverge/,
+    );
+  });
+
   it('raises an alarm when the removed deposit was already credited (S7)', () => {
     const state = build(2, 4n, 3n); // credited at height 4
     expect(depositsInState(state, 'credited')).toHaveLength(1);

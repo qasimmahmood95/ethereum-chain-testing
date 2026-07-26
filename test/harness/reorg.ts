@@ -16,7 +16,9 @@ export interface ReorgHandle {
    * running `build` (send txs, mine blocks — the caller scripts the
    * branch contents). The first replacement block's timestamp is
    * forced to diverge from the original branch so hashes differ even
-   * for otherwise-identical blocks.
+   * for otherwise-identical blocks. Precondition: the original branch
+   * mined at least one block after beginReorg (its first block's
+   * timestamp is the divergence reference).
    */
   revertAndReplace(build: () => Promise<void>): Promise<void>;
 }

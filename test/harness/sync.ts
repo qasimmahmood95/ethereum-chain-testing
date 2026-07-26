@@ -32,9 +32,16 @@ export async function syncToTip(
   for (const observation of await reader.observeBlocks(from, tip, watched)) {
     const result = applyBlock(state, observation);
     if (result.outcome === 'ancestry-break') {
+      if (state.tip === null) {
+        // applyBlock never reports a break before the first block.
+        throw new Error('unreachable: ancestry break with no tip');
+      }
       // Our tip is no longer canonical. Find the common ancestor by
-      // comparing stored hashes with the chain, deepest first.
-      let ancestor = state.tip === null ? firstHeight - 1n : state.tip.height;
+      // comparing stored hashes with the chain, deepest first. Note an
+      // equal-length divergent fork is invisible to this driver (no new
+      // heights to read) — consistent with the strictly-longer
+      // replacement design.
+      let ancestor = state.tip.height;
       for (; ancestor >= firstHeight; ancestor--) {
         const ours = state.headers.get(ancestor);
         if (ours === undefined) continue;

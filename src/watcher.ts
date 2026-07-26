@@ -125,6 +125,14 @@ export function reorgTo(
         `ancestor ${ancestor.hash} at height ${ancestorHeight}`,
     );
   }
+  // An ancestor chosen too deep would replay known-canonical blocks as
+  // fresh sightings, emitting spurious removals and alarms — refuse.
+  if (state.headers.get(first.header.height)?.hash === first.header.hash) {
+    throw new Error(
+      `replacement does not diverge at height ${first.header.height} — ` +
+        `ancestor chosen too deep`,
+    );
+  }
   for (let i = 1; i < replacement.length; i++) {
     const prev = replacement[i - 1];
     const next = replacement[i];
