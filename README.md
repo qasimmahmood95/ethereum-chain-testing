@@ -29,6 +29,12 @@ npm ci
 npx vitest run test/reorg.test.ts
 ```
 
+Optionally, `FORK_RPC_URL=<mainnet rpc> npm test` also runs the
+pinned-fork lane — the same scenarios against **real USDC** at mainnet
+block 21,000,000 via an impersonated whale, chain id forced to 31337
+([ADR-0004](docs/adr/0004-local-deploy-vs-pinned-fork.md)). Without
+the variable those tests skip; CI never touches a live RPC.
+
 ## Planted defects, caught red-handed
 
 Four long-lived `defect/*` branches each carry **one plausible commit**
@@ -36,12 +42,12 @@ on top of `main` — written to read like a sensible change, with a
 commit message that argues for it. CI catches every one. `main` stays
 green.
 
-| Branch                                                                                                               | The "sensible" change                                    | Caught by                                                                                                     |
-| -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| [`defect/early-credit`](https://github.com/qasimmahmood95/ethereum-chain-testing/tree/defect/early-credit)           | "fix an off-by-one" — compare loosened, credits at N−1   | S3 boundary ([red run](https://github.com/qasimmahmood95/ethereum-chain-testing/actions/runs/30199665759))    |
-| [`defect/reorg-blind`](https://github.com/qasimmahmood95/ethereum-chain-testing/tree/defect/reorg-blind)             | "skip the redundant parent-hash check" — heights suffice | S4 un-credit ([red run](https://github.com/qasimmahmood95/ethereum-chain-testing/actions/runs/30199665904))   |
-| [`defect/retry-fresh-nonce`](https://github.com/qasimmahmood95/ethereum-chain-testing/tree/defect/retry-fresh-nonce) | "re-sync the nonce from the node on retry"               | S8 idempotency ([red run](https://github.com/qasimmahmood95/ethereum-chain-testing/actions/runs/30199665738)) |
-| [`defect/decimals-number`](https://github.com/qasimmahmood95/ethereum-chain-testing/tree/defect/decimals-number)     | "simplify decoding" — token amounts through `Number`     | S13 property ([red run](https://github.com/qasimmahmood95/ethereum-chain-testing/actions/runs/30199665653))   |
+| Branch                                                                                                               | The "sensible" change                                    | Caught by                                                                                                                                                |
+| -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`defect/early-credit`](https://github.com/qasimmahmood95/ethereum-chain-testing/tree/defect/early-credit)           | "fix an off-by-one" — compare loosened, credits at N−1   | S3 boundary ([red runs](https://github.com/qasimmahmood95/ethereum-chain-testing/actions/workflows/ci.yml?query=branch%3Adefect%2Fearly-credit))         |
+| [`defect/reorg-blind`](https://github.com/qasimmahmood95/ethereum-chain-testing/tree/defect/reorg-blind)             | "skip the redundant parent-hash check" — heights suffice | S4 un-credit ([red runs](https://github.com/qasimmahmood95/ethereum-chain-testing/actions/workflows/ci.yml?query=branch%3Adefect%2Freorg-blind))         |
+| [`defect/retry-fresh-nonce`](https://github.com/qasimmahmood95/ethereum-chain-testing/tree/defect/retry-fresh-nonce) | "re-sync the nonce from the node on retry"               | S8 idempotency ([red runs](https://github.com/qasimmahmood95/ethereum-chain-testing/actions/workflows/ci.yml?query=branch%3Adefect%2Fretry-fresh-nonce)) |
+| [`defect/decimals-number`](https://github.com/qasimmahmood95/ethereum-chain-testing/tree/defect/decimals-number)     | "simplify decoding" — token amounts through `Number`     | S13 property ([red runs](https://github.com/qasimmahmood95/ethereum-chain-testing/actions/workflows/ci.yml?query=branch%3Adefect%2Fdecimals-number))     |
 
 What the failures look like:
 
