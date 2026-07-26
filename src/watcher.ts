@@ -11,7 +11,7 @@ import type {
   WatcherEvent,
   Wei,
 } from './types.js';
-import { nativeDepositId, wei } from './types.js';
+import { depositIdOf, wei, type AssetId } from './types.js';
 
 export interface WatcherState {
   readonly config: WatcherConfig;
@@ -206,7 +206,7 @@ function applyToMaps(
   headers.set(header.height, header);
 
   for (const observation of block.deposits) {
-    const id = nativeDepositId(observation.txHash);
+    const id = depositIdOf(observation);
     if (deposits.has(id)) {
       throw new Error(`duplicate deposit observation: ${id}`);
     }
@@ -215,6 +215,10 @@ function applyToMaps(
       txHash: observation.txHash,
       to: observation.to,
       amount: observation.amount,
+      asset: observation.asset,
+      ...(observation.logIndex !== undefined
+        ? { logIndex: observation.logIndex }
+        : {}),
       inclusionHeight: header.height,
       inclusionHash: header.hash,
       state: 'seen',
@@ -241,11 +245,20 @@ function applyToMaps(
   }
 }
 
-/** Sum of credited deposits for one address. Available funds only. */
-export function creditedBalance(state: WatcherState, to: Address): Wei {
+/** Sum of credited deposits for one (address, asset). Available funds
+ * only. */
+export function creditedBalance(
+  state: WatcherState,
+  to: Address,
+  asset: AssetId = 'native',
+): Wei {
   let total = 0n;
   for (const record of state.deposits.values()) {
-    if (record.state === 'credited' && record.to === to) {
+    if (
+      record.state === 'credited' &&
+      record.to === to &&
+      record.asset === asset
+    ) {
       total += record.amount;
     }
   }

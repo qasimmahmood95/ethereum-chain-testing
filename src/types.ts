@@ -15,10 +15,14 @@ export type TxHash = Brand<Hex, 'TxHash'>;
 export type Wei = Brand<bigint, 'Wei'>;
 
 /**
- * Identity of a deposit. Native ETH deposits are keyed by tx hash; M6
- * extends the key to (txHash, logIndex) for token transfers.
+ * Identity of a deposit. Native ETH deposits are keyed by tx hash;
+ * token transfers by (txHash, logIndex) — a tx can carry several
+ * transfers to one address, each a distinct deposit (S14).
  */
 export type DepositId = Brand<string, 'DepositId'>;
+
+/** What was deposited: native ETH or an ERC-20 (by token address). */
+export type AssetId = 'native' | Address;
 
 /**
  * Idempotency key of a withdrawal intent (ADR-0003). Whatever happens
@@ -62,6 +66,25 @@ export function nativeDepositId(hash: TxHash): DepositId {
   return hash as string as DepositId;
 }
 
+export function tokenDepositId(hash: TxHash, logIndex: number): DepositId {
+  if (!Number.isInteger(logIndex) || logIndex < 0) {
+    throw new Error(`not a log index: ${logIndex}`);
+  }
+  return `${hash}:${logIndex}` as DepositId;
+}
+
+export function depositIdOf(observation: DepositObservation): DepositId {
+  if (observation.asset === 'native') {
+    return nativeDepositId(observation.txHash);
+  }
+  if (observation.logIndex === undefined) {
+    throw new Error(
+      `token deposit ${observation.txHash} is missing its log index`,
+    );
+  }
+  return tokenDepositId(observation.txHash, observation.logIndex);
+}
+
 export function intentKey(value: string): IntentKey {
   if (value.length === 0) {
     throw new Error('intent key must be non-empty');
@@ -85,6 +108,9 @@ export interface DepositObservation {
   readonly txHash: TxHash;
   readonly to: Address;
   readonly amount: Wei;
+  readonly asset: AssetId;
+  /** Present for token deposits: position of the Transfer log. */
+  readonly logIndex?: number;
 }
 
 /** Everything the watcher learns from one new canonical block. */
@@ -107,6 +133,8 @@ export interface DepositRecord {
   readonly txHash: TxHash;
   readonly to: Address;
   readonly amount: Wei;
+  readonly asset: AssetId;
+  readonly logIndex?: number;
   readonly inclusionHeight: bigint;
   readonly inclusionHash: BlockHash;
   readonly state: DepositState;
