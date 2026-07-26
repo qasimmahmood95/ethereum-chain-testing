@@ -6,6 +6,7 @@ import {
   createPublicClient,
   http,
   keccak256,
+  TransactionReceiptNotFoundError,
   type LocalAccount,
   type PublicClient,
 } from 'viem';
@@ -14,12 +15,14 @@ import { foundry } from 'viem/chains';
 import {
   createBroadcastStore,
   decide,
+  latestAttempt,
   record,
+  replace,
   reserveNonce,
   type PreparedTx,
   type TransferIntent,
 } from '../broadcaster.js';
-import { txHash, type TxHash } from '../types.js';
+import { txHash, type IntentKey, type TxHash } from '../types.js';
 
 const ANVIL_CHAIN_ID = 31337;
 
@@ -36,13 +39,40 @@ export interface SenderConfig {
   readonly startNonce: bigint;
 }
 
+export type IntentStatus =
+  | { readonly state: 'unknown' }
+  | { readonly state: 'pending'; readonly attempt: PreparedTx }
+  | { readonly state: 'included'; readonly attempt: PreparedTx };
+
 export interface Sender {
   /**
    * Submit an intent. Idempotent: any number of calls — concurrent or
    * sequential, before or after inclusion — moves funds at most once
-   * and resolves to the same tx hash.
+   * and resolves to the same tx hash (of the latest attempt). Note: if
+   * a bump raced the original's inclusion, the resolved hash can be a
+   * superseded attempt's — statusOf is the source of truth for which
+   * attempt actually confirmed.
    */
   submit(intent: TransferIntent): Promise<TxHash>;
+  /**
+   * Non-inclusion detection (S11/S12): which attempt, if any, is on
+   * chain? 'pending' after a caller-chosen deadline means evicted or
+   * stuck — rebroadcast via submit, or bump.
+   */
+  statusOf(key: IntentKey): Promise<IntentStatus>;
+  /**
+   * Deliberate replacement (S12): sign a same-nonce, higher-fee
+   * replacement for a stuck intent, record it as superseding the
+   * original, and broadcast it. The intent completes at most once
+   * whichever attempt confirms.
+   */
+  bump(
+    key: IntentKey,
+    fees: {
+      readonly maxFeePerGas: bigint;
+      readonly maxPriorityFeePerGas: bigint;
+    },
+  ): Promise<TxHash>;
 }
 
 /** On the RETRY path only: rebroadcasting identical bytes is legal,
@@ -132,6 +162,8 @@ export function createSender(config: SenderConfig): Sender {
         to: intent.to,
         amount: intent.amount,
         nonce: reserved.nonce,
+        maxFeePerGas: config.maxFeePerGas,
+        maxPriorityFeePerGas: config.maxPriorityFeePerGas,
         rawTx,
         txHash: txHash(keccak256(rawTx)),
       };
@@ -146,16 +178,110 @@ export function createSender(config: SenderConfig): Sender {
     return broadcast(prepared, false);
   }
 
+  async function doBump(
+    key: IntentKey,
+    fees: {
+      readonly maxFeePerGas: bigint;
+      readonly maxPriorityFeePerGas: bigint;
+    },
+  ): Promise<TxHash> {
+    if (poisoned !== undefined) {
+      throw new Error(
+        `sender poisoned by earlier failure: ${poisoned.message}`,
+      );
+    }
+    const existing = store.byKey.get(key);
+    if (existing === undefined) {
+      throw new Error(`cannot bump unknown intent: ${key}`);
+    }
+    // Fail fast before wasting a signature; replace() re-enforces.
+    const current = latestAttempt(existing);
+    if (
+      fees.maxFeePerGas <= current.maxFeePerGas ||
+      fees.maxPriorityFeePerGas <= current.maxPriorityFeePerGas
+    ) {
+      throw new Error('bump fees must strictly exceed the latest attempt');
+    }
+    const rawTx = await config.account.signTransaction({
+      chainId: ANVIL_CHAIN_ID,
+      type: 'eip1559',
+      nonce: Number(existing.nonce), // SAME nonce — the whole point (S12)
+      gas: 21_000n,
+      maxFeePerGas: fees.maxFeePerGas,
+      maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
+      to: existing.to,
+      value: existing.amount,
+    });
+    const prepared: PreparedTx = {
+      key,
+      to: existing.to,
+      amount: existing.amount,
+      nonce: existing.nonce,
+      maxFeePerGas: fees.maxFeePerGas,
+      maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
+      rawTx,
+      txHash: txHash(keccak256(rawTx)),
+    };
+    // Recorded as superseding the original before the bytes go out —
+    // the pure store enforces same-nonce and strictly-higher fees.
+    store = replace(store, prepared);
+    return broadcast(prepared, false);
+  }
+
   return {
     submit(intent: TransferIntent): Promise<TxHash> {
       // Concurrent submits of one intent serialize here and share the
-      // same resolution (S9).
+      // same resolution (S9). The delete is guarded: a bump chained
+      // behind this submit overwrites the entry, and deleting it here
+      // would let its doBump run unserialized.
       const existing = inFlight.get(intent.key);
       if (existing !== undefined) return existing;
       const pending = doSubmit(intent).finally(() => {
-        inFlight.delete(intent.key);
+        if (inFlight.get(intent.key) === pending) {
+          inFlight.delete(intent.key);
+        }
       });
       inFlight.set(intent.key, pending);
+      return pending;
+    },
+
+    async statusOf(key: IntentKey): Promise<IntentStatus> {
+      const existing = store.byKey.get(key);
+      if (existing === undefined) return { state: 'unknown' };
+      for (const attempt of existing.attempts) {
+        // Only not-found means not-included. A transport error must
+        // not read as 'pending' — that is the signal that triggers
+        // bumps, and bumping an included intent records a dead attempt.
+        const receipt = await client
+          .getTransactionReceipt({ hash: attempt.txHash })
+          .catch((error: unknown) => {
+            if (error instanceof TransactionReceiptNotFoundError) return null;
+            throw error;
+          });
+        if (receipt !== null) return { state: 'included', attempt };
+      }
+      return { state: 'pending', attempt: latestAttempt(existing) };
+    },
+
+    bump(
+      key: IntentKey,
+      fees: {
+        readonly maxFeePerGas: bigint;
+        readonly maxPriorityFeePerGas: bigint;
+      },
+    ): Promise<TxHash> {
+      // Serialize with any in-flight submit of the same intent. A
+      // rejected submit doesn't veto the bump — the intent may be
+      // validly bumpable (e.g. broadcast failed after record).
+      const existing = inFlight.get(key);
+      const pending = (
+        existing === undefined
+          ? doBump(key, fees)
+          : existing.catch(() => undefined).then(() => doBump(key, fees))
+      ).finally(() => {
+        if (inFlight.get(key) === pending) inFlight.delete(key);
+      });
+      inFlight.set(key, pending);
       return pending;
     },
   };

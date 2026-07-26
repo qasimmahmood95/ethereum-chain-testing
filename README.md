@@ -32,8 +32,11 @@ transactions — is where the hard QA lives.
   broadcast, retries rebroadcast identical bytes (never re-sign, never
   re-read the pending nonce), a local monotonic allocator keeps nonces
   gapless under bursts and races.
-- **Next, M5**: dropped and stuck transactions — mempool eviction and
-  fee-bump replacement.
+- **M5 landed**: dropped and stuck transactions (S11–S12) — eviction
+  detected and rebroadcast byte-identically; a stuck tx is replaced
+  under the **same nonce** with bumped fees, so exactly one of
+  {original, replacement} ever confirms.
+- **Next, M6**: ERC-20 deposits and the reconciliation sweep.
 - Roadmap: [docs/PLAN.md](docs/PLAN.md) · Scenario ↔ invariant ↔
   custody-risk table: [docs/SCENARIOS.md](docs/SCENARIOS.md)
 
