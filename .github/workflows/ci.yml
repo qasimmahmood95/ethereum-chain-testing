@@ -24,7 +24,17 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
+      # Fork-lane cache: Anvil memoizes fork RPC responses per pinned
+      # block, so with the secret set only the first run hits the RPC.
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.foundry/cache
+          key: fork-rpc-21000000
+      # FORK_RPC_URL is optional: absent, the fork suite skips and CI
+      # never touches a live RPC (ADR-0004).
       - run: npm test
+        env:
+          FORK_RPC_URL: ${{ secrets.FORK_RPC_URL }}
 
   gitleaks:
     runs-on: ubuntu-latest
