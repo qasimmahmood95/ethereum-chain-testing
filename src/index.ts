@@ -1,3 +1,5 @@
-// Library under test. Modules land per milestone (see docs/PLAN.md):
-// watcher, broadcaster, nonce allocator, erc20 decoding, reconcile.
-export {};
+// Core library surface: pure logic only. The viem adapter lives in
+// src/rpc/ and is imported directly so consumers of the core never
+// pull in a node dependency.
+export * from './types.js';
+export * from './watcher.js';
