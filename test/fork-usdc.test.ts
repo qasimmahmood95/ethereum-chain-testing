@@ -102,45 +102,53 @@ describe.skipIf(!FORK_RPC_URL)('pinned-fork lane: real USDC', () => {
         return state;
       },
       async sync(): Promise<readonly WatcherEvent[]> {
-        const r = await syncToTip(reader, state, baseline + 1n, [CUSTODY], [
-          USDC,
-        ]);
+        const r = await syncToTip(
+          reader,
+          state,
+          baseline + 1n,
+          [CUSTODY],
+          [USDC],
+        );
         state = r.state;
         return r.events;
       },
     };
   }
 
-  it('S13-on-fork: a real USDC deposit credits at exactly depth N', SLOW, async () => {
-    const baseline = await reader.getTipHeight();
-    const w = makeSync(baseline);
+  it(
+    'S13-on-fork: a real USDC deposit credits at exactly depth N',
+    SLOW,
+    async () => {
+      const baseline = await reader.getTipHeight();
+      const w = makeSync(baseline);
 
-    await sendUsdc(AMOUNT);
-    await mine(1);
-    const seen = await w.sync();
-    expect(seen.map((e) => e.type)).toEqual(['deposit-seen']);
-    expect(depositsInState(w.state, 'seen')[0]?.amount).toBe(AMOUNT);
-    expect(depositsInState(w.state, 'seen')[0]?.asset).toBe(USDC);
+      await sendUsdc(AMOUNT);
+      await mine(1);
+      const seen = await w.sync();
+      expect(seen.map((e) => e.type)).toEqual(['deposit-seen']);
+      expect(depositsInState(w.state, 'seen')[0]?.amount).toBe(AMOUNT);
+      expect(depositsInState(w.state, 'seen')[0]?.asset).toBe(USDC);
 
-    await mine(DEPTH - 2); // N-1 confirmations
-    expect(await w.sync()).toEqual([]);
-    expect(creditedBalance(w.state, CUSTODY, USDC)).toBe(0n);
+      await mine(DEPTH - 2); // N-1 confirmations
+      expect(await w.sync()).toEqual([]);
+      expect(creditedBalance(w.state, CUSTODY, USDC)).toBe(0n);
 
-    await mine(1); // exactly N
-    const credited = await w.sync();
-    expect(credited).toEqual([
-      expect.objectContaining({
-        type: 'deposit-credited',
-        confirmations: BigInt(DEPTH),
-      }),
-    ]);
-    expect(creditedBalance(w.state, CUSTODY, USDC)).toBe(AMOUNT);
+      await mine(1); // exactly N
+      const credited = await w.sync();
+      expect(credited).toEqual([
+        expect.objectContaining({
+          type: 'deposit-credited',
+          confirmations: BigInt(DEPTH),
+        }),
+      ]);
+      expect(creditedBalance(w.state, CUSTODY, USDC)).toBe(AMOUNT);
 
-    const creditingHeight = baseline + BigInt(DEPTH);
-    expect(await reader.getTokenBalance(USDC, CUSTODY, creditingHeight)).toBe(
-      AMOUNT,
-    );
-  });
+      const creditingHeight = baseline + BigInt(DEPTH);
+      expect(await reader.getTokenBalance(USDC, CUSTODY, creditingHeight)).toBe(
+        AMOUNT,
+      );
+    },
+  );
 
   it('S15-on-fork: a reorged-out USDC deposit un-credits', SLOW, async () => {
     const baseline = await reader.getTipHeight();
