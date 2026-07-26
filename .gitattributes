@@ -1,0 +1,2 @@
+# Deterministic line endings on Windows dev machines and Linux CI alike.
+* text=auto eol=lf

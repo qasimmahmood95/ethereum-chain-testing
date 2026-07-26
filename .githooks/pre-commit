@@ -1,0 +1,11 @@
+#!/bin/sh
+# Block committing anything that looks like a secret. There must never be
+# anything for this to find (CLAUDE.md hard rule 1): signing uses only
+# Anvil's well-known dev accounts. Requires gitleaks >= 8.19.
+if command -v gitleaks >/dev/null 2>&1; then
+  exec gitleaks git --pre-commit --staged --redact --verbose
+fi
+
+echo "pre-commit: gitleaks not installed; skipping local secret scan (CI runs it as backstop)" >&2
+echo "pre-commit: install from https://github.com/gitleaks/gitleaks#installing" >&2
+exit 0
