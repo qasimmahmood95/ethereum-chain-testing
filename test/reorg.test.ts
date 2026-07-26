@@ -93,7 +93,7 @@ describe('S4–S7: reorg handling against Anvil', () => {
 
     // Pin nonce + fees so the re-sent tx is byte-identical (same hash).
     const nonce = await anvil.publicClient.getTransactionCount({
-      address: DEV_ACCOUNT_0 as `0x${string}`,
+      address: DEV_ACCOUNT_0,
     });
     const pinned = {
       to: CUSTODY as `0x${string}`,
