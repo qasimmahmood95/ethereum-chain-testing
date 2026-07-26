@@ -1,12 +1,27 @@
-// Anvil's well-known dev accounts (unlocked node-side, so no private
-// keys appear anywhere in this repo — CLAUDE.md hard rule 1). Signing
-// happens inside Anvil via eth_sendTransaction.
+// Anvil's well-known dev accounts (CLAUDE.md hard rule 1). Deposits
+// are sent node-side via eth_sendTransaction (accounts are unlocked in
+// Anvil); the M4+ broadcaster signs locally with accounts derived from
+// Anvil's canonical dev mnemonic — public by design, so the only "key
+// material" in this repo is that well-known phrase.
 
 import { createWalletClient, http, type Hex } from 'viem';
+import { mnemonicToAccount, type HDAccount } from 'viem/accounts';
 import { foundry } from 'viem/chains';
 
 /** Anvil dev account #0 — the default deposit sender in tests. */
 export const DEV_ACCOUNT_0 = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
+
+/** Anvil's canonical, public dev mnemonic. Not a secret by design. */
+export const ANVIL_MNEMONIC =
+  'test test test test test test test test test test test junk';
+
+/**
+ * A locally-signing dev account (M4+ broadcaster tests need raw bytes
+ * to rebroadcast). Same keys Anvil funds and unlocks at startup.
+ */
+export function devAccount(index: number): HDAccount {
+  return mnemonicToAccount(ANVIL_MNEMONIC, { addressIndex: index });
+}
 
 export interface SendEthArgs {
   readonly to: Hex;

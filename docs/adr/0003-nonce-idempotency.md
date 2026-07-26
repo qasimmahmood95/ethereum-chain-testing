@@ -1,6 +1,6 @@
 # 0003: Nonce management and broadcast idempotency
 
-Status: accepted (M1); implemented in M4
+Status: accepted; implemented in M4
 
 ## Context
 
@@ -19,8 +19,9 @@ intents.
   `{intent, nonce, rawTx, hash}` **before** first broadcast, then send.
 - A retry looks up the stored raw tx and rebroadcasts the identical
   bytes. It never re-signs and never re-reads the pending nonce.
-- Concurrent submits of one intent serialize on the store and return
-  the same hash.
+- Concurrent submits of one intent serialize on the submitter's
+  in-flight map and return the same hash; the store's duplicate-intent
+  refusal backstops it (reject, never converge on a double-sign).
 - The local allocator is the source of truth for pending nonces; the
   chain is consulted only to initialize it and to confirm inclusion.
 
@@ -33,3 +34,7 @@ intents.
 - Cost: the store must be persisted before any bytes hit the wire;
   in-memory here (out of scope: durable storage), but the ordering
   invariant is what the tests pin down.
+- A failure between nonce reservation and record would leave a gap
+  that freezes every later withdrawal; the sender poisons itself on
+  that path and refuses further submits rather than continuing
+  silently.

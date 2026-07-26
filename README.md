@@ -28,8 +28,12 @@ transactions — is where the hard QA lives.
   inclusion block leaves the canonical chain; a reorg deeper than N
   that invalidates a credited deposit raises an explicit alarm, never
   silence.
-- **Next, M4**: nonce management and broadcast idempotency — a retry
-  after timeout can never double-spend.
+- **M4 landed**: broadcast idempotency (S8–S10) — persist-before-
+  broadcast, retries rebroadcast identical bytes (never re-sign, never
+  re-read the pending nonce), a local monotonic allocator keeps nonces
+  gapless under bursts and races.
+- **Next, M5**: dropped and stuck transactions — mempool eviction and
+  fee-bump replacement.
 - Roadmap: [docs/PLAN.md](docs/PLAN.md) · Scenario ↔ invariant ↔
   custody-risk table: [docs/SCENARIOS.md](docs/SCENARIOS.md)
 
