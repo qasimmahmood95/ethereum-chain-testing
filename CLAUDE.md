@@ -52,6 +52,10 @@ reconciliation-testing.
   deterministic scenarios for chain behaviour.
 - eslint and prettier, enforced in CI.
 - Conventional Commits; small, reviewable commits.
+- Git identity: all commits are authored and committed as
+  `Qasim Mahmood <95350675+qasimmahmood95@users.noreply.github.com>`;
+  no co-author trailers. Set repo-local `user.name`/`user.email`
+  before the first commit of a session.
 - One PR per milestone (see `docs/PLAN.md`).
 - ADRs in `docs/adr/NNNN-title.md`, one page each. Required set:
   Anvil over mocks, reorg simulation via snapshot/revert, the
