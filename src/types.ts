@@ -107,8 +107,17 @@ export type WatcherEvent =
       readonly confirmations: bigint;
     }
   | {
-      // Emitted from M3 on: the inclusion block left the canonical chain.
+      // The deposit's inclusion block left the canonical chain. A later
+      // re-inclusion is a fresh sighting.
       readonly type: 'deposit-removed';
       readonly deposit: DepositRecord;
       readonly reason: 'reorged-out';
+    }
+  | {
+      // A reorg deeper than N invalidated an already-credited deposit.
+      // Funds the books counted no longer exist on chain — never silent
+      // (S7); reconciliation re-checks this in M6.
+      readonly type: 'alarm';
+      readonly kind: 'credited-deposit-invalidated';
+      readonly deposit: DepositRecord;
     };
