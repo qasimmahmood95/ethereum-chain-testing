@@ -8,7 +8,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createWalletClient, http } from 'viem';
 import { foundry } from 'viem/chains';
-import { startAnvil, type AnvilInstance } from './harness/anvil.js';
+import {
+  startAnvil,
+  useSnapshotReset,
+  type AnvilInstance,
+} from './harness/anvil.js';
 import { beginReorg } from './harness/reorg.js';
 import { syncToTip } from './harness/sync.js';
 import { createChainReader, type ChainReader } from '../src/rpc/adapter.js';
@@ -58,11 +62,18 @@ describe.skipIf(!FORK_RPC_URL)('pinned-fork lane: real USDC', () => {
         '--chain-id',
         '31337',
       ],
+      startupTimeoutMs: 90_000, // fork boot fetches remote metadata
     });
     await anvil.testClient.setAutomine(false);
     reader = createChainReader(anvil.rpcUrl);
 
-    // The whale must cover the transfer at the pinned block; a clear
+    // One buffer block above the fork point: every test baseline then
+    // sits on a locally-mined block, so syncs never scan the heavy
+    // mainnet block and reorg walkbacks always find an observed
+    // ancestor.
+    await anvil.testClient.mine({ blocks: 1 });
+
+    // The whale must cover the transfers at the pinned block; a clear
     // failure here means "pick a different whale", not a bug.
     const whaleBalance = await reader.getTokenBalance(USDC, WHALE, FORK_BLOCK);
     expect(whaleBalance).toBeGreaterThanOrEqual(AMOUNT * 2n);
@@ -77,6 +88,8 @@ describe.skipIf(!FORK_RPC_URL)('pinned-fork lane: real USDC', () => {
   afterAll(async () => {
     await anvil?.stop();
   });
+
+  useSnapshotReset(() => anvil);
 
   async function sendUsdc(amount: bigint): Promise<void> {
     const wallet = createWalletClient({
@@ -102,13 +115,7 @@ describe.skipIf(!FORK_RPC_URL)('pinned-fork lane: real USDC', () => {
         return state;
       },
       async sync(): Promise<readonly WatcherEvent[]> {
-        const r = await syncToTip(
-          reader,
-          state,
-          baseline + 1n,
-          [CUSTODY],
-          [USDC],
-        );
+        const r = await syncToTip(reader, state, baseline, [CUSTODY], [USDC]);
         state = r.state;
         return r.events;
       },
@@ -121,6 +128,9 @@ describe.skipIf(!FORK_RPC_URL)('pinned-fork lane: real USDC', () => {
     async () => {
       const baseline = await reader.getTipHeight();
       const w = makeSync(baseline);
+      // Delta-based chain truth: no assumption that the custody vanity
+      // address holds zero USDC at the pinned block.
+      const custodyBase = await reader.getTokenBalance(USDC, CUSTODY, baseline);
 
       await sendUsdc(AMOUNT);
       await mine(1);
@@ -145,7 +155,7 @@ describe.skipIf(!FORK_RPC_URL)('pinned-fork lane: real USDC', () => {
 
       const creditingHeight = baseline + BigInt(DEPTH);
       expect(await reader.getTokenBalance(USDC, CUSTODY, creditingHeight)).toBe(
-        AMOUNT,
+        custodyBase + AMOUNT,
       );
     },
   );
@@ -153,6 +163,7 @@ describe.skipIf(!FORK_RPC_URL)('pinned-fork lane: real USDC', () => {
   it('S15-on-fork: a reorged-out USDC deposit un-credits', SLOW, async () => {
     const baseline = await reader.getTipHeight();
     const w = makeSync(baseline);
+    const custodyBase = await reader.getTokenBalance(USDC, CUSTODY, baseline);
 
     const reorg = await beginReorg(anvil);
     await sendUsdc(AMOUNT);
@@ -167,6 +178,6 @@ describe.skipIf(!FORK_RPC_URL)('pinned-fork lane: real USDC', () => {
     expect(events.map((e) => e.type)).toEqual(['deposit-removed']);
     expect(creditedBalance(w.state, CUSTODY, USDC)).toBe(0n);
     const tip = await reader.getTipHeight();
-    expect(await reader.getTokenBalance(USDC, CUSTODY, tip)).toBe(0n);
+    expect(await reader.getTokenBalance(USDC, CUSTODY, tip)).toBe(custodyBase);
   });
 });

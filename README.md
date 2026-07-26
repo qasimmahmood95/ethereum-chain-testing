@@ -30,7 +30,7 @@ npx vitest run test/reorg.test.ts
 ```
 
 Optionally, `FORK_RPC_URL=<mainnet rpc> npm test` also runs the
-pinned-fork lane — the same scenarios against **real USDC** at mainnet
+pinned-fork lane — S13/S15-shaped scenarios against **real USDC** at mainnet
 block 21,000,000 via an impersonated whale, chain id forced to 31337
 ([ADR-0004](docs/adr/0004-local-deploy-vs-pinned-fork.md)). Without
 the variable those tests skip; CI never touches a live RPC.
@@ -109,8 +109,9 @@ everywhere — small in tests so suites stay fast; nothing hardcodes 12.
 - **Integer minor units only** — every amount is `bigint`; seeded
   fast-check properties pin exactness past 2^53.
 - **Deterministic** — Foundry pinned (v1.4.1) and actions SHA-pinned in
-  CI, fees and nonces explicit, seeded randomness; the whole suite (59
-  tests, 10 files) runs in ~2 seconds, CI in under a minute.
+  CI, fees and nonces explicit, seeded randomness; the whole suite (61
+  tests, 11 files; 59 run by default — the fork pair needs a secret)
+  runs in ~2 seconds, CI in under a minute.
 - **No real keys, funds or networks** — signing uses only Anvil's
   well-known dev accounts; gitleaks runs pre-commit and in CI.
 

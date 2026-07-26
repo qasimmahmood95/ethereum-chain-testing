@@ -29,12 +29,15 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.foundry/cache
+          # Keep in sync with FORK_BLOCK in test/fork-usdc.test.ts.
           key: fork-rpc-21000000
       # FORK_RPC_URL is optional: absent, the fork suite skips and CI
-      # never touches a live RPC (ADR-0004).
+      # never touches a live RPC (ADR-0004). Scoped to main so defect/*
+      # branches stay pure-local — an RPC outage must never redden a
+      # defect run for the wrong reason.
       - run: npm test
         env:
-          FORK_RPC_URL: ${{ secrets.FORK_RPC_URL }}
+          FORK_RPC_URL: ${{ github.ref == 'refs/heads/main' && secrets.FORK_RPC_URL || '' }}
 
   gitleaks:
     runs-on: ubuntu-latest
