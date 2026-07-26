@@ -63,17 +63,35 @@ export async function startAnvil(
   });
 
   let output = '';
+  const collect = (chunk: string) => (output += chunk);
   proc.stdout.setEncoding('utf8');
   proc.stderr.setEncoding('utf8');
-  proc.stdout.on('data', (chunk: string) => (output += chunk));
-  proc.stderr.on('data', (chunk: string) => (output += chunk));
+  proc.stdout.on('data', collect);
+  proc.stderr.on('data', collect);
 
   const port = await waitForListenPort(proc, () => output);
+  // Startup output captured; from here on discard, or a chatty node would
+  // grow the buffer unboundedly. resume() keeps the pipes draining so
+  // anvil never blocks on a full stdout pipe.
+  proc.stdout.off('data', collect).resume();
+  proc.stderr.off('data', collect).resume();
+
   const rpcUrl = `http://127.0.0.1:${port}`;
   const { testClient, publicClient } = makeClients(rpcUrl);
 
+  // If the vitest worker dies before afterAll runs, don't orphan the node
+  // (mostly a Windows dev-machine concern). 'exit' handlers must be sync.
+  const killOnExit = () => proc.kill('SIGKILL');
+  process.once('exit', killOnExit);
+
   let stopping: Promise<void> | undefined;
-  const stop = (): Promise<void> => (stopping ??= terminate(proc));
+  const stop = (): Promise<void> => {
+    if (!stopping) {
+      process.off('exit', killOnExit);
+      stopping = terminate(proc);
+    }
+    return stopping;
+  };
 
   let chainId: number;
   try {
@@ -105,20 +123,27 @@ export async function startAnvil(
  * `evm_revert` consumes the snapshot, so a fresh one is taken every test.
  */
 export function useSnapshotReset(anvil: () => AnvilInstance): void {
-  let snapshotId: Hex;
+  // Shared hook state: not safe under describe.concurrent, which M1..M8
+  // suites never use (each suite owns one Anvil; tests run sequentially).
+  let snapshotId: Hex | undefined;
 
   beforeEach(async () => {
     snapshotId = await anvil().testClient.snapshot();
   });
 
   afterEach(async () => {
+    // If the beforeEach snapshot failed, there is nothing to revert;
+    // reverting a stale id here would only mask the original error.
+    if (snapshotId === undefined) return;
+    const id = snapshotId;
+    snapshotId = undefined;
     // Anvil answers evm_revert with a boolean; viem's schema types it void.
     const reverted = (await anvil().testClient.request({
       method: 'evm_revert',
-      params: [snapshotId],
+      params: [id],
     })) as unknown as boolean;
     if (reverted !== true) {
-      throw new Error(`evm_revert(${snapshotId}) returned false`);
+      throw new Error(`evm_revert(${id}) returned false`);
     }
   });
 }

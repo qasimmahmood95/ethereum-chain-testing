@@ -16,7 +16,9 @@ describe('anvil harness', () => {
   });
 
   afterAll(async () => {
-    await anvil.stop();
+    // Optional-chained: if startAnvil rejected in beforeAll, anvil is
+    // undefined and the root-cause failure must not be masked here.
+    await anvil?.stop();
   });
 
   it('serves the Anvil dev chain id', async () => {
@@ -35,6 +37,10 @@ describe('anvil harness', () => {
     expect(mined.parentHash).toBe(parent.hash);
   });
 
+  // These two tests prove the reset by running in declaration order (the
+  // vitest default for tests within a file): the first mutates, the second
+  // observes the mutation gone. Filtering to only the second, or enabling
+  // sequence.shuffle, makes the proof vacuous.
   describe('opt-in snapshot/revert reset', () => {
     useSnapshotReset(() => anvil);
 
