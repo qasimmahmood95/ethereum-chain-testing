@@ -4,6 +4,10 @@
 
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
+
+// Randomness is seeded (CLAUDE.md rule 4): failures must reproduce
+// byte for byte in CI and locally.
+fc.configureGlobal({ seed: 20260726 });
 import {
   decodeTransferLog,
   fromMinorUnits,
