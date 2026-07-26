@@ -3,6 +3,7 @@
 // each intent moves funds exactly once, and nonces stay gapless.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { TransactionReceiptNotFoundError } from 'viem';
 import {
   startAnvil,
   useSnapshotReset,
@@ -74,7 +75,10 @@ describe('S8–S10: broadcast idempotency against Anvil', () => {
     // No block mined: no receipt — the caller times out and retries.
     const receipt = await anvil.publicClient
       .getTransactionReceipt({ hash: first })
-      .catch(() => null);
+      .catch((error: unknown) => {
+        if (error instanceof TransactionReceiptNotFoundError) return null;
+        throw error;
+      });
     expect(receipt).toBeNull();
 
     const retried = await sender.submit(wd);

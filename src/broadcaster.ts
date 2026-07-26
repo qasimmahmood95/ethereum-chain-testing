@@ -20,9 +20,13 @@ export interface TransferIntent {
   readonly amount: Wei;
 }
 
-/** A signed tx bound to an intent, persisted before first broadcast. */
+/** A signed tx bound to an intent, persisted before first broadcast.
+ * Carries the intent's parameters so a reused key with different
+ * to/amount is caught instead of silently paying the wrong transfer. */
 export interface PreparedTx {
   readonly key: IntentKey;
+  readonly to: Address;
+  readonly amount: Wei;
   readonly nonce: bigint;
   readonly rawTx: Hex;
   readonly txHash: TxHash;
@@ -41,12 +45,22 @@ export type SubmitDecision =
   | { readonly action: 'rebroadcast'; readonly prepared: PreparedTx }
   | { readonly action: 'sign' };
 
-/** Idempotency gate: a known intent is only ever rebroadcast. */
-export function decide(store: BroadcastStore, key: IntentKey): SubmitDecision {
-  const prepared = store.byKey.get(key);
-  return prepared === undefined
-    ? { action: 'sign' }
-    : { action: 'rebroadcast', prepared };
+/** Idempotency gate: a known intent is only ever rebroadcast. A key
+ * reused with different parameters is a caller bug — paying the stored
+ * transfer while reporting success would send customer B's withdrawal
+ * to customer A, so it is refused loudly. */
+export function decide(
+  store: BroadcastStore,
+  intent: TransferIntent,
+): SubmitDecision {
+  const prepared = store.byKey.get(intent.key);
+  if (prepared === undefined) return { action: 'sign' };
+  if (prepared.to !== intent.to || prepared.amount !== intent.amount) {
+    throw new Error(
+      `intent key ${intent.key} reused with different parameters`,
+    );
+  }
+  return { action: 'rebroadcast', prepared };
 }
 
 export function reserveNonce(store: BroadcastStore): {
@@ -69,9 +83,13 @@ export function record(
   if (store.byKey.has(prepared.key)) {
     throw new Error(`intent already recorded: ${prepared.key}`);
   }
-  if (prepared.nonce >= store.nonce.next) {
+  if (
+    prepared.nonce >= store.nonce.next ||
+    prepared.nonce < store.nonce.floor
+  ) {
     throw new Error(
-      `nonce ${prepared.nonce} was never reserved (next is ${store.nonce.next})`,
+      `nonce ${prepared.nonce} was never reserved ` +
+        `(allocator owns [${store.nonce.floor}, ${store.nonce.next}))`,
     );
   }
   for (const existing of store.byKey.values()) {

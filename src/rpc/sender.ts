@@ -45,14 +45,15 @@ export interface Sender {
   submit(intent: TransferIntent): Promise<TxHash>;
 }
 
-/** Rebroadcasting identical bytes is legal; these node answers mean
- * "already have it / already mined" and are success for our purposes. */
+/** On the RETRY path only: rebroadcasting identical bytes is legal,
+ * and these node answers mean "already have it / already mined". On a
+ * first send every error is real — swallowing "nonce too low" there
+ * would report success for a tx that can never mine. */
 const BENIGN_REBROADCAST = [
   'already known',
   'already imported',
   'alreadyknown',
   'nonce too low',
-  'replacement transaction underpriced',
 ];
 
 export function createSender(config: SenderConfig): Sender {
@@ -65,8 +66,12 @@ export function createSender(config: SenderConfig): Sender {
   let store = createBroadcastStore(config.startNonce);
   const inFlight = new Map<string, Promise<TxHash>>();
   let chainChecked = false;
+  let poisoned: Error | undefined;
 
-  async function broadcast(prepared: PreparedTx): Promise<TxHash> {
+  async function broadcast(
+    prepared: PreparedTx,
+    isRebroadcast: boolean,
+  ): Promise<TxHash> {
     try {
       await sendRawTransaction(client, {
         serializedTransaction: prepared.rawTx,
@@ -74,14 +79,23 @@ export function createSender(config: SenderConfig): Sender {
     } catch (error) {
       const message =
         error instanceof Error ? error.message.toLowerCase() : String(error);
-      if (!BENIGN_REBROADCAST.some((benign) => message.includes(benign))) {
-        throw error;
-      }
+      const benign =
+        isRebroadcast &&
+        BENIGN_REBROADCAST.some((answer) => message.includes(answer));
+      if (!benign) throw error;
     }
     return prepared.txHash;
   }
 
   async function doSubmit(intent: TransferIntent): Promise<TxHash> {
+    if (poisoned !== undefined) {
+      // A reserve-without-record failure left a nonce gap; every later
+      // tx would sit unmineable behind it. Refuse loudly rather than
+      // silently freezing withdrawals (S10's custody risk).
+      throw new Error(
+        `sender poisoned by earlier failure: ${poisoned.message}`,
+      );
+    }
     if (!chainChecked) {
       const chainId = await client.getChainId();
       if (chainId !== ANVIL_CHAIN_ID) {
@@ -92,37 +106,44 @@ export function createSender(config: SenderConfig): Sender {
       chainChecked = true;
     }
 
-    const decision = decide(store, intent.key);
+    const decision = decide(store, intent);
     if (decision.action === 'rebroadcast') {
       // Retry path: identical bytes, same hash. Never re-signs, never
       // re-reads the pending nonce (ADR-0003).
-      return broadcast(decision.prepared);
+      return broadcast(decision.prepared, true);
     }
 
     const reserved = reserveNonce(store);
     store = reserved.store;
-    const rawTx = await config.account.signTransaction({
-      chainId: ANVIL_CHAIN_ID,
-      type: 'eip1559',
-      nonce: Number(reserved.nonce),
-      gas: 21_000n,
-      maxFeePerGas: config.maxFeePerGas,
-      maxPriorityFeePerGas: config.maxPriorityFeePerGas,
-      to: intent.to,
-      value: intent.amount,
-    });
+    let prepared: PreparedTx;
+    try {
+      const rawTx = await config.account.signTransaction({
+        chainId: ANVIL_CHAIN_ID,
+        type: 'eip1559',
+        nonce: Number(reserved.nonce),
+        gas: 21_000n,
+        maxFeePerGas: config.maxFeePerGas,
+        maxPriorityFeePerGas: config.maxPriorityFeePerGas,
+        to: intent.to,
+        value: intent.amount,
+      });
+      prepared = {
+        key: intent.key,
+        to: intent.to,
+        amount: intent.amount,
+        nonce: reserved.nonce,
+        rawTx,
+        txHash: txHash(keccak256(rawTx)),
+      };
+      // Persist before the first broadcast: if we crash after this
+      // line, a retry rebroadcasts these bytes — never double-spends.
+      store = record(store, prepared);
+    } catch (error) {
+      poisoned = error instanceof Error ? error : new Error(String(error));
+      throw error;
+    }
 
-    const prepared: PreparedTx = {
-      key: intent.key,
-      nonce: reserved.nonce,
-      rawTx,
-      txHash: txHash(keccak256(rawTx)),
-    };
-    // Persist before the first broadcast: if we crash after this line,
-    // a retry rebroadcasts these bytes instead of double-spending.
-    store = record(store, prepared);
-
-    return broadcast(prepared);
+    return broadcast(prepared, false);
   }
 
   return {

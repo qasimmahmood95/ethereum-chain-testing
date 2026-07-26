@@ -3,3 +3,5 @@
 // pull in a node dependency.
 export * from './types.js';
 export * from './watcher.js';
+export * from './broadcaster.js';
+export * from './nonce.js';

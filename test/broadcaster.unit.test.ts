@@ -9,15 +9,24 @@ import {
   reserveNonce,
   type PreparedTx,
 } from '../src/broadcaster.js';
-import { intentKey, txHash, type Hex } from '../src/types.js';
+import { address, intentKey, txHash, wei, type Hex } from '../src/types.js';
+
+const TO = address(`0x${'33'.repeat(20)}`);
+const AMOUNT = wei(1_000n);
 
 function prepared(key: string, nonce: bigint): PreparedTx {
   return {
     key: intentKey(key),
+    to: TO,
+    amount: AMOUNT,
     nonce,
     rawTx: `0x02${nonce.toString(16).padStart(4, '0')}` as Hex,
     txHash: txHash(`0x${nonce.toString(16).padStart(64, '0')}`),
   };
+}
+
+function intentOf(key: string) {
+  return { key: intentKey(key), to: TO, amount: AMOUNT };
 }
 
 describe('nonce allocator (pure)', () => {
@@ -40,19 +49,38 @@ describe('nonce allocator (pure)', () => {
 describe('broadcast store (pure)', () => {
   it('an unknown intent signs; a recorded intent only ever rebroadcasts', () => {
     let store = createBroadcastStore(0n);
-    const key = intentKey('wd-1');
-    expect(decide(store, key)).toEqual({ action: 'sign' });
+    expect(decide(store, intentOf('wd-1'))).toEqual({ action: 'sign' });
 
     const reserved = reserveNonce(store);
     store = record(reserved.store, prepared('wd-1', reserved.nonce));
 
-    const decision = decide(store, key);
+    const decision = decide(store, intentOf('wd-1'));
     expect(decision.action).toBe('rebroadcast');
     if (decision.action === 'rebroadcast') {
       // Identical bytes, identical hash — never re-signed.
       expect(decision.prepared.rawTx).toBe(prepared('wd-1', 0n).rawTx);
       expect(decision.prepared.txHash).toBe(prepared('wd-1', 0n).txHash);
     }
+  });
+
+  it('refuses an intent key reused with different parameters', () => {
+    let store = createBroadcastStore(0n);
+    const reserved = reserveNonce(store);
+    store = record(reserved.store, prepared('wd-1', reserved.nonce));
+    expect(() =>
+      decide(store, { ...intentOf('wd-1'), amount: wei(999n) }),
+    ).toThrow(/different parameters/);
+    expect(() =>
+      decide(store, {
+        ...intentOf('wd-1'),
+        to: address(`0x${'44'.repeat(20)}`),
+      }),
+    ).toThrow(/different parameters/);
+  });
+
+  it('refuses to record a nonce below the allocator floor', () => {
+    const store = createBroadcastStore(3n);
+    expect(() => record(store, prepared('wd-1', 1n))).toThrow(/never reserved/);
   });
 
   it('refuses to record the same intent twice', () => {

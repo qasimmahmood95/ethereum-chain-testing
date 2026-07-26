@@ -6,18 +6,24 @@
 export interface NonceState {
   /** The next nonce to hand out. */
   readonly next: bigint;
+  /** The first nonce this allocator ever owned; nothing below it was
+   * reserved here. */
+  readonly floor: bigint;
 }
 
 export function createNonceState(next: bigint): NonceState {
   if (next < 0n) {
     throw new Error(`nonce must be non-negative, got ${next}`);
   }
-  return { next };
+  return { next, floor: next };
 }
 
 export function allocateNonce(state: NonceState): {
   readonly state: NonceState;
   readonly nonce: bigint;
 } {
-  return { state: { next: state.next + 1n }, nonce: state.next };
+  return {
+    state: { next: state.next + 1n, floor: state.floor },
+    nonce: state.next,
+  };
 }

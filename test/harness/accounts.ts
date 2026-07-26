@@ -1,6 +1,8 @@
-// Anvil's well-known dev accounts (unlocked node-side, so no private
-// keys appear anywhere in this repo — CLAUDE.md hard rule 1). Signing
-// happens inside Anvil via eth_sendTransaction.
+// Anvil's well-known dev accounts (CLAUDE.md hard rule 1). Deposits
+// are sent node-side via eth_sendTransaction (accounts are unlocked in
+// Anvil); the M4+ broadcaster signs locally with accounts derived from
+// Anvil's canonical dev mnemonic — public by design, so the only "key
+// material" in this repo is that well-known phrase.
 
 import { createWalletClient, http, type Hex } from 'viem';
 import { mnemonicToAccount, type HDAccount } from 'viem/accounts';
