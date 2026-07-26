@@ -42,6 +42,9 @@ function topicToAddress(topic: string): Address | null {
  * Decode one log as an ERC-20 Transfer. Returns null for anything that
  * is not a well-formed Transfer (wrong topic0, wrong arity, malformed
  * padding or data) — foreign events are skipped, never miscredited.
+ * A log that IS a Transfer but carries a malformed emitting address or
+ * tx hash throws instead: that is node-response corruption, not a
+ * foreign event, and must not be skipped silently.
  */
 export function decodeTransferLog(log: RawLog): TokenTransfer | null {
   if (log.topics.length !== 3) return null;

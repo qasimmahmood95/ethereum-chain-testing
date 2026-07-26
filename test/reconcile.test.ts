@@ -163,11 +163,21 @@ describe('S16: reconciliation against Anvil', () => {
     ]);
 
     // Processing the reorg (removals + alarms) restores clean books.
+    // Exactly three credited deposits were invalidated — one alarm
+    // each, never an aggregate.
     const events = await sync();
-    expect(
-      events.filter((e) => e.type === 'alarm').length,
-    ).toBeGreaterThanOrEqual(1);
+    expect(events.filter((e) => e.type === 'alarm')).toHaveLength(3);
     const healed = reconcile(state, await balancesAt(newTip));
     expect(healed.discrepancies).toEqual([]);
+  });
+
+  it('refuses to reconcile when a credited pair has no balance observation', async () => {
+    const baseline = await reader.getTipHeight();
+    let state: WatcherState = createWatcher({ confirmationDepth: DEPTH });
+    await sendEth(anvil.rpcUrl, { to: CUSTODY, valueWei: 1_000n });
+    await mine(DEPTH);
+    const r = await syncToTip(reader, state, baseline, [CUSTODY], []);
+    state = r.state;
+    expect(() => reconcile(state, [])).toThrow(/missing a balance/);
   });
 });

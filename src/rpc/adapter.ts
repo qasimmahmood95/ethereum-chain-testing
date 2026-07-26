@@ -68,6 +68,8 @@ export function createChainReader(rpcUrl: string): ChainReader {
     getHeader,
 
     async getBalance(at, height) {
+      // Height-pinned, not hash-pinned (unlike observeBlocks' logs):
+      // fine on quiescent test chains; EIP-1898 would pin by hash.
       return wei(await client.getBalance({ address: at, blockNumber: height }));
     },
 

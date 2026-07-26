@@ -31,13 +31,32 @@ export interface ReconcileReport {
 
 /**
  * Compare the watcher's credited set against observed chain balances.
- * Assumes the observations were taken at the confirmed height (tip −
- * N + 1): at that block, exactly the credited deposits have landed.
+ *
+ * Preconditions the caller owns:
+ * - Observations were taken at the confirmed height (tip − N + 1): at
+ *   that block, exactly the credited deposits have landed, and
+ *   seen-but-uncredited ones (included above it) are excluded.
+ * - Custody addresses are deposit-only with a zero balance at the
+ *   watcher's baseline — no outbound transfers, no gas spend — so the
+ *   absolute balance equals the deposit delta (S16's "balance delta").
+ * - Every credited (address, asset) pair must appear in `balances`;
+ *   a missing pair is refused loudly — silence would let an omitted
+ *   sweep defeat the "every discrepancy reported" invariant.
  */
 export function reconcile(
   state: WatcherState,
   balances: readonly BalanceObservation[],
 ): ReconcileReport {
+  const observed = new Set(balances.map((b) => `${b.address}|${b.asset}`));
+  for (const record of state.deposits.values()) {
+    if (record.state !== 'credited') continue;
+    if (!observed.has(`${record.to}|${record.asset}`)) {
+      throw new Error(
+        `reconcile is missing a balance observation for credited pair ` +
+          `(${record.to}, ${record.asset})`,
+      );
+    }
+  }
   const entries = balances.map((balance): ReconcileEntry => {
     const credited = creditedBalance(state, balance.address, balance.asset);
     return {
