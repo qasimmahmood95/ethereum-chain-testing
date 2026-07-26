@@ -73,9 +73,6 @@ export function applyBlock(
         `non-contiguous block: tip height ${state.tip.height}, got ${header.height}`,
       );
     }
-    if (header.parentHash !== state.tip.hash) {
-      return { state, events: [], outcome: 'ancestry-break' };
-    }
   }
 
   const headers = new Map(state.headers);
