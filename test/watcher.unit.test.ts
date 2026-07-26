@@ -47,6 +47,7 @@ function deposit(seed: number, amount: bigint): DepositObservation {
     txHash: txHash(`0x${seed.toString(16).padStart(64, '0')}`),
     to: CUSTODY,
     amount: wei(amount),
+    asset: 'native',
   };
 }
 
