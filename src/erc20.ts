@@ -57,7 +57,7 @@ export function decodeTransferLog(log: RawLog): TokenTransfer | null {
     token: address(log.address),
     from,
     to,
-    value: wei(BigInt(log.data)),
+    value: wei(BigInt(Number(log.data))),
     txHash: txHash(log.transactionHash),
     logIndex: log.logIndex,
   };
