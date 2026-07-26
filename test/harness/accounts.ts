@@ -3,10 +3,23 @@
 // happens inside Anvil via eth_sendTransaction.
 
 import { createWalletClient, http, type Hex } from 'viem';
+import { mnemonicToAccount, type HDAccount } from 'viem/accounts';
 import { foundry } from 'viem/chains';
 
 /** Anvil dev account #0 — the default deposit sender in tests. */
 export const DEV_ACCOUNT_0 = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
+
+/** Anvil's canonical, public dev mnemonic. Not a secret by design. */
+export const ANVIL_MNEMONIC =
+  'test test test test test test test test test test test junk';
+
+/**
+ * A locally-signing dev account (M4+ broadcaster tests need raw bytes
+ * to rebroadcast). Same keys Anvil funds and unlocks at startup.
+ */
+export function devAccount(index: number): HDAccount {
+  return mnemonicToAccount(ANVIL_MNEMONIC, { addressIndex: index });
+}
 
 export interface SendEthArgs {
   readonly to: Hex;
