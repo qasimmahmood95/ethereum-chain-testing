@@ -20,6 +20,12 @@ export type Wei = Brand<bigint, 'Wei'>;
  */
 export type DepositId = Brand<string, 'DepositId'>;
 
+/**
+ * Idempotency key of a withdrawal intent (ADR-0003). Whatever happens
+ * — timeouts, retries, races — one key moves funds at most once.
+ */
+export type IntentKey = Brand<string, 'IntentKey'>;
+
 const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/;
 const HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 
@@ -54,6 +60,13 @@ export function wei(value: bigint): Wei {
 
 export function nativeDepositId(hash: TxHash): DepositId {
   return hash as string as DepositId;
+}
+
+export function intentKey(value: string): IntentKey {
+  if (value.length === 0) {
+    throw new Error('intent key must be non-empty');
+  }
+  return value as IntentKey;
 }
 
 /** Confirmation depth N is policy, passed in explicitly — never a default. */
