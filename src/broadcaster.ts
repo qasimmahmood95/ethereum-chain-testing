@@ -162,6 +162,9 @@ export function replace(
     );
   }
   const current = latestAttempt(existing);
+  // "Strictly increase" matches Anvil's replacement policy (it accepts
+  // any bump). Real nodes demand ~10% on both fields; gas strategy is
+  // out of scope (docs/PLAN.md), Anvil is the only target here.
   if (
     prepared.maxFeePerGas <= current.maxFeePerGas ||
     prepared.maxPriorityFeePerGas <= current.maxPriorityFeePerGas

@@ -135,7 +135,13 @@ describe('S11–S12: dropped and stuck transactions against Anvil', () => {
       state: 'included',
       attempt: { txHash: replacement },
     });
-    await mine(20); // base fee decays far below the original's 2 gwei cap
+    await mine(20);
+    // The decay window must genuinely pass below the original's cap —
+    // otherwise "never confirms" would be proven by the spent nonce
+    // alone and shrinking the window would weaken the scenario.
+    const block = await anvil.publicClient.getBlock();
+    expect(block.baseFeePerGas).not.toBeNull();
+    expect(block.baseFeePerGas ?? 0n).toBeLessThan(2n * GWEI);
 
     // Exactly one of {original, replacement} on chain — never both,
     // never neither.

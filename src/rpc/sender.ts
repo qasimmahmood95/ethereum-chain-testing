@@ -6,6 +6,7 @@ import {
   createPublicClient,
   http,
   keccak256,
+  TransactionReceiptNotFoundError,
   type LocalAccount,
   type PublicClient,
 } from 'viem';
@@ -47,7 +48,10 @@ export interface Sender {
   /**
    * Submit an intent. Idempotent: any number of calls — concurrent or
    * sequential, before or after inclusion — moves funds at most once
-   * and resolves to the same tx hash (of the latest attempt).
+   * and resolves to the same tx hash (of the latest attempt). Note: if
+   * a bump raced the original's inclusion, the resolved hash can be a
+   * superseded attempt's — statusOf is the source of truth for which
+   * attempt actually confirmed.
    */
   submit(intent: TransferIntent): Promise<TxHash>;
   /**
@@ -181,9 +185,22 @@ export function createSender(config: SenderConfig): Sender {
       readonly maxPriorityFeePerGas: bigint;
     },
   ): Promise<TxHash> {
+    if (poisoned !== undefined) {
+      throw new Error(
+        `sender poisoned by earlier failure: ${poisoned.message}`,
+      );
+    }
     const existing = store.byKey.get(key);
     if (existing === undefined) {
       throw new Error(`cannot bump unknown intent: ${key}`);
+    }
+    // Fail fast before wasting a signature; replace() re-enforces.
+    const current = latestAttempt(existing);
+    if (
+      fees.maxFeePerGas <= current.maxFeePerGas ||
+      fees.maxPriorityFeePerGas <= current.maxPriorityFeePerGas
+    ) {
+      throw new Error('bump fees must strictly exceed the latest attempt');
     }
     const rawTx = await config.account.signTransaction({
       chainId: ANVIL_CHAIN_ID,
@@ -214,11 +231,15 @@ export function createSender(config: SenderConfig): Sender {
   return {
     submit(intent: TransferIntent): Promise<TxHash> {
       // Concurrent submits of one intent serialize here and share the
-      // same resolution (S9).
+      // same resolution (S9). The delete is guarded: a bump chained
+      // behind this submit overwrites the entry, and deleting it here
+      // would let its doBump run unserialized.
       const existing = inFlight.get(intent.key);
       if (existing !== undefined) return existing;
       const pending = doSubmit(intent).finally(() => {
-        inFlight.delete(intent.key);
+        if (inFlight.get(intent.key) === pending) {
+          inFlight.delete(intent.key);
+        }
       });
       inFlight.set(intent.key, pending);
       return pending;
@@ -228,9 +249,15 @@ export function createSender(config: SenderConfig): Sender {
       const existing = store.byKey.get(key);
       if (existing === undefined) return { state: 'unknown' };
       for (const attempt of existing.attempts) {
+        // Only not-found means not-included. A transport error must
+        // not read as 'pending' — that is the signal that triggers
+        // bumps, and bumping an included intent records a dead attempt.
         const receipt = await client
           .getTransactionReceipt({ hash: attempt.txHash })
-          .catch(() => null);
+          .catch((error: unknown) => {
+            if (error instanceof TransactionReceiptNotFoundError) return null;
+            throw error;
+          });
         if (receipt !== null) return { state: 'included', attempt };
       }
       return { state: 'pending', attempt: latestAttempt(existing) };
@@ -243,12 +270,14 @@ export function createSender(config: SenderConfig): Sender {
         readonly maxPriorityFeePerGas: bigint;
       },
     ): Promise<TxHash> {
-      // Serialize with any in-flight submit of the same intent.
+      // Serialize with any in-flight submit of the same intent. A
+      // rejected submit doesn't veto the bump — the intent may be
+      // validly bumpable (e.g. broadcast failed after record).
       const existing = inFlight.get(key);
       const pending = (
         existing === undefined
           ? doBump(key, fees)
-          : existing.then(() => doBump(key, fees))
+          : existing.catch(() => undefined).then(() => doBump(key, fees))
       ).finally(() => {
         if (inFlight.get(key) === pending) inFlight.delete(key);
       });

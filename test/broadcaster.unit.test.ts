@@ -144,6 +144,25 @@ describe('replacement / fee bump (pure, S12)', () => {
     expect(latestAttempt(rec!).maxFeePerGas).toBe(20n);
   });
 
+  it('a second bump must exceed the FIRST bump, and becomes the live attempt', () => {
+    let { store } = recorded();
+    store = replace(store, prepared('wd-1', 0n, { max: 20n, prio: 2n }));
+    // Priced between the original and bump 1: going backwards — refused.
+    expect(() =>
+      replace(store, prepared('wd-1', 0n, { max: 15n, prio: 3n })),
+    ).toThrow(/strictly increase/);
+
+    const bump2 = prepared('wd-1', 0n, { max: 30n, prio: 3n });
+    store = replace(store, bump2);
+    const decision = decide(store, intentOf('wd-1'));
+    if (decision.action === 'rebroadcast') {
+      expect(decision.prepared.txHash).toBe(bump2.txHash);
+    } else {
+      expect.unreachable('recorded intent must rebroadcast');
+    }
+    expect(store.byKey.get(intentKey('wd-1'))?.attempts).toHaveLength(3);
+  });
+
   it('refuses a replacement under a different nonce (double-spend path)', () => {
     const { store } = recorded();
     expect(() =>
