@@ -138,9 +138,26 @@ export function createSender(config: SenderConfig): Sender {
 
     const decision = decide(store, intent);
     if (decision.action === 'rebroadcast') {
-      // Retry path: identical bytes, same hash. Never re-signs, never
-      // re-reads the pending nonce (ADR-0003).
-      return broadcast(decision.prepared, true);
+      // Retry path: refresh the nonce from the node so a retry never
+      // collides with pool state that moved underneath us.
+      const pendingNonce = await client.getTransactionCount({
+        address: config.account.address,
+        blockTag: 'pending',
+      });
+      const rawTx = await config.account.signTransaction({
+        chainId: ANVIL_CHAIN_ID,
+        type: 'eip1559',
+        nonce: pendingNonce,
+        gas: 21_000n,
+        maxFeePerGas: config.maxFeePerGas,
+        maxPriorityFeePerGas: config.maxPriorityFeePerGas,
+        to: intent.to,
+        value: intent.amount,
+      });
+      return broadcast(
+        { ...decision.prepared, rawTx, txHash: txHash(keccak256(rawTx)) },
+        true,
+      );
     }
 
     const reserved = reserveNonce(store);
