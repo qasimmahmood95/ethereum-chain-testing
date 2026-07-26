@@ -1,6 +1,6 @@
 # 0004: Local deploy versus pinned mainnet fork
 
-Status: accepted (M1)
+Status: accepted (M1); fork lane implemented as an M8 follow-up
 
 ## Context
 
@@ -17,6 +17,20 @@ lane is an optional follow-on, not a milestone: fork block pinned and
 its state cached (`actions/cache` keyed on the block, or
 `anvil_dumpState` committed if small enough), skipped automatically
 when no cache or RPC secret is present.
+
+## Implementation (M8 follow-up)
+
+`test/fork-usdc.test.ts` runs S13/S15-shaped scenarios against real
+USDC on a fork pinned at mainnet block 21,000,000, using an
+impersonated Circle wallet as the depositor. Mechanics:
+
+- The whole suite is `describe.skipIf(!FORK_RPC_URL)`: no secret, no
+  fork tests, no live RPC — locally and in CI alike.
+- The fork's chain id is forced to 31337, so the harness's hard-rule-1
+  assertion holds and every signature is invalid on real mainnet by
+  construction.
+- CI caches `~/.foundry/cache` keyed on the pinned block: with the
+  secret set, only the first run pays the RPC round-trips.
 
 ## Consequences
 

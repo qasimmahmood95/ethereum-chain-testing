@@ -47,6 +47,9 @@ export interface AnvilInstance {
 export interface StartAnvilOptions {
   /** Extra CLI arguments, e.g. ['--no-mining'] for mempool suites. */
   readonly args?: readonly string[];
+  /** Listen-banner deadline. Fork mode fetches remote chain metadata
+   * before listening, so fork suites pass a larger budget. */
+  readonly startupTimeoutMs?: number;
 }
 
 /**
@@ -69,7 +72,11 @@ export async function startAnvil(
   proc.stdout.on('data', collect);
   proc.stderr.on('data', collect);
 
-  const port = await waitForListenPort(proc, () => output);
+  const port = await waitForListenPort(
+    proc,
+    () => output,
+    options.startupTimeoutMs ?? STARTUP_TIMEOUT_MS,
+  );
   // Startup output captured; from here on discard, or a chatty node would
   // grow the buffer unboundedly. resume() keeps the pipes draining so
   // anvil never blocks on a full stdout pipe.
@@ -151,8 +158,9 @@ export function useSnapshotReset(anvil: () => AnvilInstance): void {
 async function waitForListenPort(
   proc: ChildProcess,
   getOutput: () => string,
+  timeoutMs: number,
 ): Promise<number> {
-  const deadline = Date.now() + STARTUP_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
   let failure: Error | undefined;
 
   proc.once('error', (error: NodeJS.ErrnoException) => {
@@ -176,7 +184,7 @@ async function waitForListenPort(
     if (Date.now() > deadline) {
       proc.kill('SIGKILL');
       throw new Error(
-        `anvil did not report a listening port within ${STARTUP_TIMEOUT_MS}ms:\n${getOutput()}`,
+        `anvil did not report a listening port within ${timeoutMs}ms:\n${getOutput()}`,
       );
     }
     await delay(10);
