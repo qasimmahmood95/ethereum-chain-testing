@@ -117,6 +117,7 @@ describe('watcher (pure)', () => {
       'deposit-seen',
       'deposit-credited',
     ]);
+    expect(events[1]).toMatchObject({ confirmations: 1n });
   });
 
   it('preserves amounts exactly past 2^53 wei', () => {

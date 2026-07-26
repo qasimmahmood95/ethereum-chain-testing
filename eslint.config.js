@@ -29,9 +29,9 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: ['viem', 'viem/*'],
+              group: ['viem', 'viem/*', './rpc/*', '../rpc/*'],
               message:
-                'viem is only allowed in src/rpc/ — the core takes chain observations as data (CLAUDE.md rule 3).',
+                'viem (directly or via src/rpc) is only allowed in src/rpc/ — the core takes chain observations as data (CLAUDE.md rule 3).',
             },
           ],
         },

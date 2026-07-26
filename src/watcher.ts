@@ -16,7 +16,8 @@ import { nativeDepositId, wei } from './types.js';
 export interface WatcherState {
   readonly config: WatcherConfig;
   /** Canonical headers by height. Hashes are tracked, not just heights —
-   * M3's ancestry check depends on it. */
+   * M3's ancestry check depends on it. Retained unbounded for now; M3
+   * sets the rewind horizon and should prune below tip − horizon. */
   readonly headers: ReadonlyMap<bigint, BlockHeader>;
   readonly tip: BlockHeader | null;
   readonly deposits: ReadonlyMap<DepositId, DepositRecord>;

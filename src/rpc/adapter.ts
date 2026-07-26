@@ -18,8 +18,9 @@ export interface ChainReader {
   getBalance(at: Address, height: bigint): Promise<Wei>;
   /**
    * Observe blocks [from, to] (inclusive), returning for each block its
-   * header and any native ETH transfers with value > 0 to a watched
-   * address. Contract-internal transfers are out of scope.
+   * header and any *successful* native ETH transfers with value > 0 to
+   * a watched address (reverted txs carry value in the block body but
+   * move nothing). Contract-internal transfers are out of scope.
    */
   observeBlocks(
     from: bigint,
@@ -69,6 +70,14 @@ export function createChainReader(rpcUrl: string): ChainReader {
           if (tx.to === null || tx.value === 0n) continue;
           const to_ = address(tx.to);
           if (!watchedSet.has(to_)) continue;
+          // A value-bearing tx to a watched *contract* can revert and
+          // still sit in the block body with its value; crediting it
+          // would book funds that never moved. Only successful txs
+          // count as deposits.
+          const receipt = await client.getTransactionReceipt({
+            hash: tx.hash,
+          });
+          if (receipt.status !== 'success') continue;
           deposits.push({
             txHash: txHash(tx.hash),
             to: to_,
