@@ -23,13 +23,19 @@ export async function syncToTip(
   state: WatcherState,
   firstHeight: bigint,
   watched: readonly Address[],
+  watchedTokens: readonly Address[] = [],
 ): Promise<SyncResult> {
   const events: WatcherEvent[] = [];
   const tip = await reader.getTipHeight();
   const from = state.tip === null ? firstHeight : state.tip.height + 1n;
   if (from > tip) return { state, events };
 
-  for (const observation of await reader.observeBlocks(from, tip, watched)) {
+  for (const observation of await reader.observeBlocks(
+    from,
+    tip,
+    watched,
+    watchedTokens,
+  )) {
     const result = applyBlock(state, observation);
     if (result.outcome === 'ancestry-break') {
       if (state.tip === null) {
@@ -52,6 +58,7 @@ export async function syncToTip(
         ancestor + 1n,
         tip,
         watched,
+        watchedTokens,
       );
       const reorged = reorgTo(state, replacement);
       events.push(...reorged.events);

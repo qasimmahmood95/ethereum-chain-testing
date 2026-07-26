@@ -36,7 +36,12 @@ transactions — is where the hard QA lives.
   detected and rebroadcast byte-identically; a stuck tx is replaced
   under the **same nonce** with bumped fees, so exactly one of
   {original, replacement} ever confirms.
-- **Next, M6**: ERC-20 deposits and the reconciliation sweep.
+- **M6 landed**: ERC-20 deposits (S13–S15) — same state machine, same
+  reorg handling, deposits keyed by (txHash, logIndex), `bigint` minor
+  units property-tested past 2^53 — and the reconciliation sweep
+  (S16): credited books equal chain truth at the confirmed height;
+  a deeper-than-N reorg surfaces as its exact delta.
+- **Next, M7**: the planted-defect branches and their red CI runs.
 - Roadmap: [docs/PLAN.md](docs/PLAN.md) · Scenario ↔ invariant ↔
   custody-risk table: [docs/SCENARIOS.md](docs/SCENARIOS.md)
 

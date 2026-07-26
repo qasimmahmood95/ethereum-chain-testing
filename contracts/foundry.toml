@@ -1,0 +1,7 @@
+# Compile-once config for the test fixture; the built artifact is
+# committed, so CI never compiles Solidity (determinism, rule 4).
+[profile.default]
+src = "src"
+out = "out"
+solc_version = "0.8.24"
+optimizer = false
