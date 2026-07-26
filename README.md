@@ -19,8 +19,12 @@ transactions — is where the hard QA lives.
 - **M1 landed**: strict-TS scaffold and an Anvil harness that spawns a
   real node per suite (asserts chain id 31337, opt-in snapshot/revert
   reset per test), green in CI in under a minute.
-- **Next, M2**: the deposit watcher — seen at 1 confirmation, credited
-  at depth N, as pure logic fed by chain observations.
+- **M2 landed**: the deposit watcher — a pure state machine (no viem
+  import, enforced by lint) fed chain observations; deposits _seen_ at
+  1 confirmation, _credited_ at exactly depth N (S1–S3), amounts exact
+  `bigint` wei past 2^53.
+- **Next, M3**: deterministic reorgs via snapshot/revert — the
+  headline un-credit test.
 - Roadmap: [docs/PLAN.md](docs/PLAN.md) · Scenario ↔ invariant ↔
   custody-risk table: [docs/SCENARIOS.md](docs/SCENARIOS.md)
 
