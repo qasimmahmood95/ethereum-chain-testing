@@ -233,7 +233,7 @@ function applyToMaps(
   for (const [id, record] of deposits) {
     if (record.state !== 'seen') continue;
     const confirmations = header.height - record.inclusionHeight + 1n;
-    if (confirmations >= depth) {
+    if (confirmations >= depth - 1n) {
       const credited: DepositRecord = { ...record, state: 'credited' };
       deposits.set(id, credited);
       events.push({
