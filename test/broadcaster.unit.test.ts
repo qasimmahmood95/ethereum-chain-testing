@@ -5,7 +5,9 @@ import { allocateNonce, createNonceState } from '../src/nonce.js';
 import {
   createBroadcastStore,
   decide,
+  latestAttempt,
   record,
+  replace,
   reserveNonce,
   type PreparedTx,
 } from '../src/broadcaster.js';
@@ -14,14 +16,22 @@ import { address, intentKey, txHash, wei, type Hex } from '../src/types.js';
 const TO = address(`0x${'33'.repeat(20)}`);
 const AMOUNT = wei(1_000n);
 
-function prepared(key: string, nonce: bigint): PreparedTx {
+function prepared(
+  key: string,
+  nonce: bigint,
+  fees: { max: bigint; prio: bigint } = { max: 10n, prio: 1n },
+): PreparedTx {
   return {
     key: intentKey(key),
     to: TO,
     amount: AMOUNT,
     nonce,
-    rawTx: `0x02${nonce.toString(16).padStart(4, '0')}` as Hex,
-    txHash: txHash(`0x${nonce.toString(16).padStart(64, '0')}`),
+    maxFeePerGas: fees.max,
+    maxPriorityFeePerGas: fees.prio,
+    rawTx: `0x02${nonce.toString(16)}${fees.max.toString(16)}` as Hex,
+    txHash: txHash(
+      `0x${(nonce * 1000n + fees.max).toString(16).padStart(64, '0')}`,
+    ),
   };
 }
 
@@ -107,5 +117,63 @@ describe('broadcast store (pure)', () => {
     expect(() => record(store, prepared('wd-2', a.nonce))).toThrow(
       /already bound/,
     );
+  });
+});
+
+describe('replacement / fee bump (pure, S12)', () => {
+  function recorded(): { store: ReturnType<typeof createBroadcastStore> } {
+    let store = createBroadcastStore(0n);
+    const a = reserveNonce(store);
+    store = record(a.store, prepared('wd-1', a.nonce));
+    return { store };
+  }
+
+  it('a valid bump supersedes: same intent, same nonce, higher fees', () => {
+    let { store } = recorded();
+    const bump = prepared('wd-1', 0n, { max: 20n, prio: 2n });
+    store = replace(store, bump);
+
+    const decision = decide(store, intentOf('wd-1'));
+    expect(decision.action).toBe('rebroadcast');
+    if (decision.action === 'rebroadcast') {
+      // The latest attempt (the bump) is what rebroadcasts now.
+      expect(decision.prepared.txHash).toBe(bump.txHash);
+    }
+    const rec = store.byKey.get(intentKey('wd-1'));
+    expect(rec?.attempts).toHaveLength(2);
+    expect(latestAttempt(rec!).maxFeePerGas).toBe(20n);
+  });
+
+  it('refuses a replacement under a different nonce (double-spend path)', () => {
+    const { store } = recorded();
+    expect(() =>
+      replace(store, prepared('wd-1', 1n, { max: 20n, prio: 2n })),
+    ).toThrow(/must reuse nonce/);
+  });
+
+  it('refuses a replacement that does not strictly raise both fees', () => {
+    const { store } = recorded();
+    expect(() =>
+      replace(store, prepared('wd-1', 0n, { max: 10n, prio: 2n })),
+    ).toThrow(/strictly increase/);
+    expect(() =>
+      replace(store, prepared('wd-1', 0n, { max: 20n, prio: 1n })),
+    ).toThrow(/strictly increase/);
+  });
+
+  it('refuses a replacement that changes the transfer', () => {
+    const { store } = recorded();
+    const wrong = {
+      ...prepared('wd-1', 0n, { max: 20n, prio: 2n }),
+      amount: wei(999n),
+    };
+    expect(() => replace(store, wrong)).toThrow(/changes the transfer/);
+  });
+
+  it('refuses to replace an unknown intent', () => {
+    const store = createBroadcastStore(0n);
+    expect(() =>
+      replace(store, prepared('wd-x', 0n, { max: 20n, prio: 2n })),
+    ).toThrow(/unknown intent/);
   });
 });
