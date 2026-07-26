@@ -1,6 +1,6 @@
 # 0003: Nonce management and broadcast idempotency
 
-Status: accepted (M1); implemented in M4
+Status: accepted; implemented in M4
 
 ## Context
 
