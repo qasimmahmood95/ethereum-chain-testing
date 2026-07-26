@@ -8,14 +8,25 @@ import { foundry } from 'viem/chains';
 /** Anvil dev account #0 — the default deposit sender in tests. */
 export const DEV_ACCOUNT_0 = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
 
+export interface SendEthArgs {
+  readonly to: Hex;
+  readonly valueWei: bigint;
+  readonly from?: Hex;
+  /**
+   * Pinning nonce + fees makes the tx bytes — and therefore the tx
+   * hash — deterministic across a snapshot/revert, which is how S5
+   * re-includes the *same* tx on the replacement branch.
+   */
+  readonly nonce?: number;
+  readonly maxFeePerGas?: bigint;
+  readonly maxPriorityFeePerGas?: bigint;
+}
+
 /**
  * Send native ETH from an unlocked Anvil dev account. Returns the tx
  * hash. With automine off the tx sits in the mempool until mined.
  */
-export async function sendEth(
-  rpcUrl: string,
-  args: { readonly to: Hex; readonly valueWei: bigint; readonly from?: Hex },
-): Promise<Hex> {
+export async function sendEth(rpcUrl: string, args: SendEthArgs): Promise<Hex> {
   const wallet = createWalletClient({
     chain: foundry,
     transport: http(rpcUrl),
@@ -24,5 +35,13 @@ export async function sendEth(
     account: args.from ?? DEV_ACCOUNT_0,
     to: args.to,
     value: args.valueWei,
+    gas: 21_000n,
+    ...(args.nonce !== undefined ? { nonce: args.nonce } : {}),
+    ...(args.maxFeePerGas !== undefined
+      ? { maxFeePerGas: args.maxFeePerGas }
+      : {}),
+    ...(args.maxPriorityFeePerGas !== undefined
+      ? { maxPriorityFeePerGas: args.maxPriorityFeePerGas }
+      : {}),
   });
 }

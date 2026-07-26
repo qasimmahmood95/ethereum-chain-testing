@@ -1,6 +1,6 @@
 # 0002: Reorg simulation via snapshot/revert
 
-Status: accepted (M1); to be finalized with measured behaviour in M3
+Status: accepted; finalized in M3
 
 ## Context
 
@@ -16,15 +16,29 @@ height H, mine the original branch containing the deposit, revert, then
 mine a longer replacement branch. Replacement blocks get distinct
 timestamps via `evm_setNextBlockTimestamp`, otherwise Anvil can re-mine
 byte-identical blocks and the "reorg" is invisible to a hash-tracking
-watcher.
+watcher (`test/harness/reorg.ts`).
+
+## What this models — measured in M3
+
+- `evm_revert` restores chain _and_ txpool state, so the original
+  branch's txs vanish with it; S5 re-includes the same tx by re-sending
+  with pinned nonce and fees, which reproduces the identical hash
+  (Anvil signs deterministically, RFC 6979).
+- The first replacement block's base fee and hash-relevant fields are
+  identical to the original's except the forced timestamp — the
+  divergence is real but minimal, which is exactly what a hash-tracking
+  watcher must catch (S6).
+- Fork choice is not modeled: no competing miner, no reorg decision by
+  the node. The harness imposes the "longer replacement wins" outcome;
+  the watcher's `reorgTo` requires a strictly longer replacement for
+  the same reason.
+- `anvil_reorg` exists as an alternative and was not adopted: it
+  rebuilds a forked history in one call but scripts the replacement
+  contents less directly than mining them explicitly.
 
 ## Consequences
 
-- Both branches are fully controlled, so tests can assert exact
-  post-reorg state (un-credit, re-credit at new height, alarm).
-- This models the _effect_ of a reorg on an observer, not fork choice:
-  there is no competing miner and no reorg decision by the node.
-- `anvil_reorg` exists as an alternative; snapshot/revert is preferred
-  for explicit control of the replacement branch's content. Revisit in
-  M3 if it proves simpler for S5.
-- Snapshots are consumed by revert; the harness re-snapshots per test.
+- Both branches are fully controlled, so tests assert exact post-reorg
+  state (un-credit, re-credit at new height, alarm — S4/S5/S7).
+- Snapshots are consumed by revert; the harness re-snapshots per test,
+  and nested snapshots (suite reset + per-test fork point) compose.
