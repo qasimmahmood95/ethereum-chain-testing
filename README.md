@@ -56,7 +56,8 @@ AssertionError: expected [ 'deposit-seen', 'deposit-credited' ] to deeply equal 
 ```
 
 **`defect/reorg-blind`** — the watcher never notices the fork; the
-reorged-out deposit survives and goes on to credit (S4–S7, S15, S16):
+reorged-out deposit survives and goes on to credit (S4–S7, S15, S16
+and the ancestry-break unit test):
 
 ```
 FAIL  S15: a token deposit reorged out before depth un-credits like native ETH
